@@ -1,0 +1,132 @@
+#!/bin/bash
+export CLUSTER_NAME=my-cluster
+export AWS_PROFILE=huan
+export NAMESPACE=my-namespace
+export PUBLIC_DOMAIN=my-cluster.ordervietnhat.com
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity | jq -r '.Account')
+export STACK_NAME=eksctl-$CLUSTER_NAME-cluster
+export AWS_REGION=ap-southeast-1
+
+eksctl create cluster \
+--name ${CLUSTER_NAME} -r ap-southeast-1 \
+--version 1.27 --fargate --with-oidc
+aws eks update-kubeconfig --name ${CLUSTER_NAME} 
+eksctl utils associate-iam-oidc-provider --cluster $CLUSTER_NAME --approve
+
+
+# https://aws.amazon.com/blogs/containers/using-alb-ingress-controller-with-amazon-eks-on-fargate/
+wget -O alb-ingress-iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/master/docs/examples/iam-policy.json
+aws iam create-policy --policy-name ALBIngressControllerIAMPolicy --policy-document file://alb-ingress-iam-policy.json
+export VPC_ID=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" | jq -r '[.Stacks[0].Outputs[] | {key: .OutputKey, value: .OutputValue}] | from_entries' | jq -r '.VPC')
+kubectl apply -f rbac-role.yaml
+eksctl create iamserviceaccount \
+--name aws-load-balancer-controller \
+--namespace kube-system \
+--cluster $CLUSTER_NAME \
+--override-existing-serviceaccounts \
+--attach-policy-arn arn:aws:iam::$AWS_ACCOUNT_ID:policy/ALBIngressControllerIAMPolicy \
+--approve
+
+# https://github.com/kubernetes-sigs/aws-load-balancer-controller/tree/main/helm/aws-load-balancer-controller
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+helm upgrade -i aws-load-balancer-controller eks/aws-load-balancer-controller \
+-n kube-system --set clusterName=${CLUSTER_NAME} \
+--set serviceAccount.create=false \
+--set serviceAccount.name=aws-load-balancer-controller \
+--set vpcId=${VPC_ID}
+
+
+# Verify ingress
+kubectl -n default apply -f nginx-deployment.yaml
+kubectl -n default get ingress
+kubectl -n default delete -f nginx-deployment.yaml
+# [Error] Failed build model due to couldn't auto-discover subnets: UnauthorizedOperation: You are not authorized to perform this operation.
+# [Fix] https://repost.aws/knowledge-center/eks-load-balancer-controller-subnets
+
+
+kubectl create ns $NAMESPACE
+eksctl create fargateprofile --name fp-$NAMESPACE -c ${CLUSTER_NAME} \
+--namespace $NAMESPACE
+kubectl get service -n ${NAMESPACE}
+
+helm repo add activiti-cloud-helm-charts https://activiti.github.io/activiti-cloud-helm-charts/
+helm repo update
+
+# [Error] Pod not supported on Fargate: volumes not supported: data not supported because: PVC data-example-postgresql-0 not bound
+# Fargate not support EBS => EFS storageClass
+# https://github.com/kubernetes-sigs/aws-efs-csi-driver/tree/master/examples/kubernetes/volume_path
+kubectl patch storageclass gp2 -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"false"}}}'
+kubectl apply -f - <<EOF
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: efs.csi.aws.com
+spec:
+  attachRequired: false
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-sc
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: efs.csi.aws.com
+EOF
+
+aws iam create-policy --policy-name EFSCSIControllerIAMPolicy --policy-document file://efs-iam-policy.json
+eksctl create iamserviceaccount \
+--name efs-csi-controller-sa \
+--namespace kube-system \
+--cluster $CLUSTER_NAME \
+--override-existing-serviceaccounts \
+--attach-policy-arn arn:aws:iam::$AWS_ACCOUNT_ID:policy/EFSCSIControllerIAMPolicy \
+--approve # arn:aws:iam::062767735172:role/eksctl-my-cluster-addon-iamserviceaccount-ku-Role1-LZENMBV5CU5S
+
+
+helm upgrade -i example activiti-cloud-helm-charts/activiti-cloud-full-example \
+-n ${NAMESPACE} \
+--version 7.11.0 \
+--set global.gateway.domain=${PUBLIC_DOMAIN} \
+--set global.keycloak.clientSecret=$(uuidgen) \
+--set global.gateway.http=false \
+-f values.yaml
+
+FS_ID=$(aws efs describe-file-systems --query "FileSystems[0].FileSystemId" --output text) # fs-028078d8d448e9a29
+
+aws efs create-file-system \
+  --creation-token $CLUSTER_NAME-fargate \
+  --encrypted \
+  --performance-mode generalPurpose \
+  --throughput-mode bursting \
+  --tags Key=ClusterName,Value=$CLUSTER_NAME \
+  --region $AWS_REGION
+cidr_range=$(aws ec2 describe-vpcs \
+    --vpc-ids $VPC_ID \
+    --query "Vpcs[].CidrBlock" \
+    --output text \
+    --region $AWS_REGION)
+security_group_id=$(aws ec2 create-security-group \
+--group-name $CLUSTER_NAME-efs-sg \
+--description "My EFS security group" \
+--vpc-id $VPC_ID \
+--output text)
+
+aws ec2 authorize-security-group-ingress \
+    --group-id $security_group_id \
+    --protocol tcp \
+    --port 2049 \
+    --cidr $cidr_range
+subnets=$(aws ec2 describe-subnets \
+    --filters "Name=vpc-id,Values=$VPC_ID" \
+    --query 'Subnets[*].SubnetId')
+for subnet in "${subnets[@]}"; do
+    echo $subnet
+done
+aws efs create-access-point --file-system-id $FS_ID \
+--posix-user "Uid=0,Gid=0" \
+--root-directory "Path=/pv3,CreationInfo={OwnerUid=0,OwnerGid=0,Permissions=0755}" \
+--query 'AccessPointId' \
+--output text
+
+kubectl apply -f efs.yaml

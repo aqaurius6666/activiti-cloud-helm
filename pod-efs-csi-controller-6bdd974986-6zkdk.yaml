@@ -1,0 +1,276 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    CapacityProvisioned: 0.25vCPU 0.5GB
+    Logging: 'LoggingDisabled: LOGGING_CONFIGMAP_NOT_FOUND'
+  creationTimestamp: "2023-08-11T10:39:22Z"
+  generateName: efs-csi-controller-6bdd974986-
+  labels:
+    app: efs-csi-controller
+    app.kubernetes.io/instance: aws-efs-csi-driver
+    app.kubernetes.io/name: aws-efs-csi-driver
+    eks.amazonaws.com/fargate-profile: fp-default
+    pod-template-hash: 6bdd974986
+  name: efs-csi-controller-6bdd974986-6zkdk
+  namespace: kube-system
+  ownerReferences:
+  - apiVersion: apps/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: ReplicaSet
+    name: efs-csi-controller-6bdd974986
+    uid: e0dff3e6-6da8-42d8-b5ee-55f5e459f579
+  resourceVersion: "66604"
+  uid: 85439b70-35d6-41df-8bd9-7e1d273ec2c1
+spec:
+  containers:
+  - args:
+    - --endpoint=$(CSI_ENDPOINT)
+    - --logtostderr
+    - --v=2
+    - --delete-access-point-root-dir=false
+    env:
+    - name: CSI_ENDPOINT
+      value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
+    - name: CSI_NODE_NAME
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: spec.nodeName
+    - name: AWS_STS_REGIONAL_ENDPOINTS
+      value: regional
+    - name: AWS_DEFAULT_REGION
+      value: ap-southeast-1
+    - name: AWS_REGION
+      value: ap-southeast-1
+    - name: AWS_ROLE_ARN
+      value: arn:aws:iam::062767735172:role/eksctl-my-cluster-addon-iamserviceaccount-ku-Role1-LZENMBV5CU5S
+    - name: AWS_WEB_IDENTITY_TOKEN_FILE
+      value: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
+    image: 602401143452.dkr.ecr.ap-southeast-1.amazonaws.com/eks/aws-efs-csi-driver:v1.5.8
+    imagePullPolicy: IfNotPresent
+    livenessProbe:
+      failureThreshold: 5
+      httpGet:
+        path: /healthz
+        port: healthz
+        scheme: HTTP
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      successThreshold: 1
+      timeoutSeconds: 3
+    name: efs-plugin
+    ports:
+    - containerPort: 9909
+      name: healthz
+      protocol: TCP
+    resources: {}
+    securityContext:
+      privileged: false
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /var/lib/csi/sockets/pluginproxy/
+      name: socket-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-5xk8f
+      readOnly: true
+    - mountPath: /var/run/secrets/eks.amazonaws.com/serviceaccount
+      name: aws-iam-token
+      readOnly: true
+  - args:
+    - --csi-address=$(ADDRESS)
+    - --v=2
+    - --feature-gates=Topology=true
+    - --extra-create-metadata
+    - --leader-election
+    env:
+    - name: ADDRESS
+      value: /var/lib/csi/sockets/pluginproxy/csi.sock
+    - name: AWS_STS_REGIONAL_ENDPOINTS
+      value: regional
+    - name: AWS_DEFAULT_REGION
+      value: ap-southeast-1
+    - name: AWS_REGION
+      value: ap-southeast-1
+    - name: AWS_ROLE_ARN
+      value: arn:aws:iam::062767735172:role/eksctl-my-cluster-addon-iamserviceaccount-ku-Role1-LZENMBV5CU5S
+    - name: AWS_WEB_IDENTITY_TOKEN_FILE
+      value: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
+    image: 602401143452.dkr.ecr.ap-southeast-1.amazonaws.com/eks/csi-provisioner:v3.5.0-eks-1-27-3
+    imagePullPolicy: IfNotPresent
+    name: csi-provisioner
+    resources: {}
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /var/lib/csi/sockets/pluginproxy/
+      name: socket-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-5xk8f
+      readOnly: true
+    - mountPath: /var/run/secrets/eks.amazonaws.com/serviceaccount
+      name: aws-iam-token
+      readOnly: true
+  - args:
+    - --csi-address=/csi/csi.sock
+    - --health-port=9909
+    env:
+    - name: AWS_STS_REGIONAL_ENDPOINTS
+      value: regional
+    - name: AWS_DEFAULT_REGION
+      value: ap-southeast-1
+    - name: AWS_REGION
+      value: ap-southeast-1
+    - name: AWS_ROLE_ARN
+      value: arn:aws:iam::062767735172:role/eksctl-my-cluster-addon-iamserviceaccount-ku-Role1-LZENMBV5CU5S
+    - name: AWS_WEB_IDENTITY_TOKEN_FILE
+      value: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
+    image: 602401143452.dkr.ecr.ap-southeast-1.amazonaws.com/eks/livenessprobe:v2.10.0-eks-1-27-3
+    imagePullPolicy: IfNotPresent
+    name: liveness-probe
+    resources: {}
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-5xk8f
+      readOnly: true
+    - mountPath: /var/run/secrets/eks.amazonaws.com/serviceaccount
+      name: aws-iam-token
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  nodeName: fargate-ip-192-168-104-201.ap-southeast-1.compute.internal
+  nodeSelector:
+    kubernetes.io/os: linux
+  preemptionPolicy: PreemptLowerPriority
+  priority: 2000001000
+  priorityClassName: system-node-critical
+  restartPolicy: Always
+  schedulerName: fargate-scheduler
+  securityContext:
+    fsGroup: 0
+    runAsGroup: 0
+    runAsNonRoot: false
+    runAsUser: 0
+  serviceAccount: efs-csi-controller-sa
+  serviceAccountName: efs-csi-controller-sa
+  terminationGracePeriodSeconds: 30
+  tolerations:
+  - effect: NoExecute
+    key: node.kubernetes.io/not-ready
+    operator: Exists
+    tolerationSeconds: 300
+  - effect: NoExecute
+    key: node.kubernetes.io/unreachable
+    operator: Exists
+    tolerationSeconds: 300
+  volumes:
+  - name: aws-iam-token
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          audience: sts.amazonaws.com
+          expirationSeconds: 86400
+          path: token
+  - emptyDir: {}
+    name: socket-dir
+  - name: kube-api-access-5xk8f
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          name: kube-root-ca.crt
+      - downwardAPI:
+          items:
+          - fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+            path: namespace
+status:
+  conditions:
+  - lastProbeTime: null
+    lastTransitionTime: "2023-08-11T10:40:06Z"
+    status: "True"
+    type: Initialized
+  - lastProbeTime: null
+    lastTransitionTime: "2023-08-11T10:43:48Z"
+    message: 'containers with unready status: [efs-plugin]'
+    reason: ContainersNotReady
+    status: "False"
+    type: Ready
+  - lastProbeTime: null
+    lastTransitionTime: "2023-08-11T10:43:48Z"
+    message: 'containers with unready status: [efs-plugin]'
+    reason: ContainersNotReady
+    status: "False"
+    type: ContainersReady
+  - lastProbeTime: null
+    lastTransitionTime: "2023-08-11T10:40:05Z"
+    status: "True"
+    type: PodScheduled
+  containerStatuses:
+  - containerID: containerd://31f6d0179f5bd75027da209e22d4b24316697b538de15c00b1ba66dbd2805e13
+    image: 602401143452.dkr.ecr.ap-southeast-1.amazonaws.com/eks/csi-provisioner:v3.5.0-eks-1-27-3
+    imageID: 602401143452.dkr.ecr.ap-southeast-1.amazonaws.com/eks/csi-provisioner@sha256:59f137fba1fae3999eef1c8f8726ae79dd2b5a4f3e7fef937c41f2ce65cccb86
+    lastState: {}
+    name: csi-provisioner
+    ready: true
+    restartCount: 0
+    started: true
+    state:
+      running:
+        startedAt: "2023-08-11T10:40:15Z"
+  - containerID: containerd://c76d7ff5f17cd7cf341a6cc6a1d59f6f12b28916be6c4c89eaf39383c2272dc3
+    image: 602401143452.dkr.ecr.ap-southeast-1.amazonaws.com/eks/aws-efs-csi-driver:v1.5.8
+    imageID: 602401143452.dkr.ecr.ap-southeast-1.amazonaws.com/eks/aws-efs-csi-driver@sha256:69906deee13c0d0e3037eefdd7655eaca1bf633f454f3f699835e091f57093c2
+    lastState:
+      terminated:
+        containerID: containerd://c76d7ff5f17cd7cf341a6cc6a1d59f6f12b28916be6c4c89eaf39383c2272dc3
+        exitCode: 255
+        finishedAt: "2023-08-11T10:43:47Z"
+        reason: Error
+        startedAt: "2023-08-11T10:43:41Z"
+    name: efs-plugin
+    ready: false
+    restartCount: 5
+    started: false
+    state:
+      waiting:
+        message: back-off 2m40s restarting failed container=efs-plugin pod=efs-csi-controller-6bdd974986-6zkdk_kube-system(85439b70-35d6-41df-8bd9-7e1d273ec2c1)
+        reason: CrashLoopBackOff
+  - containerID: containerd://b84753c4a9cfcd2bde5048cccc2f190053c45651be2c27c2dbab8b0ed074aff9
+    image: 602401143452.dkr.ecr.ap-southeast-1.amazonaws.com/eks/livenessprobe:v2.10.0-eks-1-27-3
+    imageID: 602401143452.dkr.ecr.ap-southeast-1.amazonaws.com/eks/livenessprobe@sha256:25b4d3f9cf686ac464a742ead16e705da3adcfe574296dd75c5c05ec7473a513
+    lastState: {}
+    name: liveness-probe
+    ready: true
+    restartCount: 0
+    started: true
+    state:
+      running:
+        startedAt: "2023-08-11T10:40:16Z"
+  hostIP: 192.168.104.201
+  phase: Running
+  podIP: 192.168.104.201
+  podIPs:
+  - ip: 192.168.104.201
+  qosClass: BestEffort
+  startTime: "2023-08-11T10:40:06Z"
